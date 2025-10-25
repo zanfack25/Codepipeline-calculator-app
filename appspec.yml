@@ -1,0 +1,15 @@
+version: 0.0
+os: linux
+files:
+  - source: /
+    destination: /home/ec2-user/nodejs-app
+permissions:
+  - object: /home/ec2-user/nodejs-app
+    pattern: "**"
+    owner: ec2-user
+    mode: 755
+hooks:
+  AfterInstall:
+    - location: scripts/deploy.sh
+      timeout: 300
+      runas: ec2-user

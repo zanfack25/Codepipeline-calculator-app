@@ -1,0 +1,194 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Deploy NodeJS ECS + CodeDeploy infrastructure using existing VPC (fraud-lab-vpc)
+
+Parameters:
+  ECRAppImageURI:
+    Type: String
+    Description: ECR image URI (e.g., 123456789012.dkr.ecr.ca-central-1.amazonaws.com/nodejs-app:latest)
+
+Resources:
+
+  # =============================
+  # ECS Cluster
+  # =============================
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: nodejs-cluster
+
+  # =============================
+  # IAM Roles
+  # =============================
+
+  ECSTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: ecsTaskExecutionRole-nodejs
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+
+  CodeDeployServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: CodeDeployECSRole-nodejs
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codedeploy.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSCodeDeployRoleForECS
+
+  # =============================
+  # ECS Task Definition
+  # =============================
+  NodeJSTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: nodejs-app-task
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: '256'
+      Memory: '512'
+      NetworkMode: awsvpc
+      ExecutionRoleArn: !Ref ECSTaskExecutionRole
+      ContainerDefinitions:
+        - Name: nodejs-app
+          Image: !Ref ECRAppImageURI
+          PortMappings:
+            - ContainerPort: 3000
+          Essential: true
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: /ecs/nodejs-app
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+
+  # =============================
+  # Networking + Load Balancer
+  # =============================
+
+  ECSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow HTTP traffic to ECS tasks
+      VpcId: vpc-0d9b94c746c48edd6
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3000
+          ToPort: 3000
+          CidrIp: 0.0.0.0/0
+
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: nodejs-lb
+      Subnets:
+        # Public subnets in both AZs
+        - subnet-009e1d5349da6cd20  #PublicSubnetA ID in ca-central-1a
+        - subnet-033ee837500a24a93  #PublicSubnetB ID in ca-central-1b
+      SecurityGroups:
+        - !Ref ECSSecurityGroup
+      Scheme: internet-facing
+
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: nodejs-tg
+      Port: 3000
+      Protocol: HTTP
+      TargetType: ip
+      VpcId: vpc-0d9b94c746c48edd6
+      HealthCheckPath: /
+
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+
+  # =============================
+  # ECS Service
+  # =============================
+
+  NodeJSService:
+    Type: AWS::ECS::Service
+    DependsOn: NodeJSTaskDefinition
+    Properties:
+      ServiceName: nodejs-app-service
+      Cluster: !Ref ECSCluster
+      TaskDefinition: !Ref NodeJSTaskDefinition
+      DesiredCount: 1
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          Subnets:
+            # Private subnets (one per AZ)
+            - subnet-0686a7945f162e8a9  # PrivateSubnetA ID in ca-central-1a
+            - subnet-039b1d151d108804e  # PrivateSubnetB ID in ca-central-1b
+          SecurityGroups:
+            - !Ref ECSSecurityGroup
+      DeploymentController:
+        Type: CODE_DEPLOY
+      LoadBalancers:
+        - ContainerName: nodejs-app
+          ContainerPort: 3000
+          TargetGroupArn: !Ref TargetGroup
+
+  # =============================
+  # CodeDeploy ECS Integration
+  # =============================
+
+  CodeDeployApp:
+    Type: AWS::CodeDeploy::Application
+    Properties:
+      ApplicationName: nodejs-app-codedeploy
+      ComputePlatform: ECS
+
+  CodeDeployDeploymentGroup:
+    Type: AWS::CodeDeploy::DeploymentGroup
+    Properties:
+      ApplicationName: !Ref CodeDeployApp
+      DeploymentGroupName: nodejs-app-deploy-group
+      ServiceRoleArn: !Ref CodeDeployServiceRole
+      DeploymentConfigName: CodeDeployDefault.ECSAllAtOnce
+      ECSService:
+        ClusterName: !Ref ECSCluster
+        ServiceName: !GetAtt NodeJSService.Name
+      TargetGroupPairInfoList:
+        - ProdTrafficRoute:
+            ListenerArns:
+              - !Ref Listener
+          TargetGroups:
+            - Name: !GetAtt TargetGroup.TargetGroupName
+
+Outputs:
+  ClusterName:
+    Value: !Ref ECSCluster
+  ServiceName:
+    Value: !Ref NodeJSService
+  TaskDefinition:
+    Value: !Ref NodeJSTaskDefinition
+  LoadBalancerDNS:
+    Value: !GetAtt LoadBalancer.DNSName
+  TargetGroupArn:
+    Value: !Ref TargetGroup
+  CodeDeployApp:
+    Value: !Ref CodeDeployApp
+

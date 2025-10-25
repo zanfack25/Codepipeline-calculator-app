@@ -1,0 +1,18 @@
+version: 0.2
+
+phases:
+  pre_build:
+    commands:
+      - echo Logging in to Amazon ECR...
+      - aws ecr get-login-password --region ca-central-1 | docker login --username AWS --password-stdin 123456789012.dkr.ecr.ca-central-1.amazonaws.com
+  build:
+    commands:
+      - echo Building custom NodeJS base image...
+      - cd nodebase
+      - docker build -t nodejs-base .
+      - docker tag nodejs-base:latest 123456789012.dkr.ecr.ca-central-1.amazonaws.com/nodejs-base:latest
+  post_build:
+    commands:
+      - echo Pushing base image to ECR...
+      - docker push 123456789012.dkr.ecr.ca-central-1.amazonaws.com/nodejs-base:latest
+

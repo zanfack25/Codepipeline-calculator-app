@@ -1,0 +1,23 @@
+version: 0.2
+
+phases:
+  pre_build:
+    commands:
+      - echo "Logging in to Amazon ECR..."
+      - aws ecr get-login-password --region ca-central-1 | docker login --username AWS --password-stdin 123456789012.dkr.ecr.ca-central-1.amazonaws.com
+
+  build:
+    commands:
+      - echo "Pulling the latest Node.js app image..."
+      - docker pull 123456789012.dkr.ecr.ca-central-1.amazonaws.com/nodejs-app:latest
+
+      - echo " Running Jest tests inside the container..."
+      - docker run --rm \
+          --name nodejs-app-test \
+          123456789012.dkr.ecr.ca-central-1.amazonaws.com/nodejs-app:latest \
+          npx jest --ci --runInBand --reporters=default
+
+  post_build:
+    commands:
+      - echo "All Jest tests completed successfully."
+
