@@ -17,7 +17,7 @@ phases:
           -v $(pwd):/app \
           -w /app \
           111376855663.dkr.ecr.ca-central-1.amazonaws.com/nodejs-app:latest \
-          npm test
+           /bin/bash -c "npm install --save-dev jest && npm test"
 
   post_build:
     commands:
