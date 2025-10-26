@@ -8,7 +8,8 @@ COPY . /app
 WORKDIR /app
 
 # Install dependencies
-RUN npm install
+# Install dependencies including devDependencies
+RUN npm install --include=dev
 
 # Expose the app port
 EXPOSE 3000
