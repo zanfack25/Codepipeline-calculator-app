@@ -11,12 +11,11 @@ phases:
   build:
     commands:
       - echo "Running Jest tests inside the app container..."
-      - |
-        docker run --rm \
+      - docker run --rm \
           --name nodejs-app-test \
+          -w /app \
           111376855663.dkr.ecr.ca-central-1.amazonaws.com/nodejs-app:latest \
-          /bin/bash -c "npm install --save-dev jest && npm test"
-
+          npm test
 
   post_build:
     commands:
