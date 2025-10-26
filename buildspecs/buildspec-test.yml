@@ -14,10 +14,9 @@ phases:
       - |
         docker run --rm \
           --name nodejs-app-test \
-          -v $(pwd):/app \
-          -w /app \
           111376855663.dkr.ecr.ca-central-1.amazonaws.com/nodejs-app:latest \
-           /bin/bash -c "npm install --save-dev jest && npm test"
+          /bin/bash -c "npm install --save-dev jest && npm test"
+
 
   post_build:
     commands:
