@@ -1,5 +1,5 @@
 # Use the custom base image from ECR
-FROM 123456789012.dkr.ecr.us-east-1.amazonaws.com/nodejs-base:latest
+FROM 111376855663.dkr.ecr.ca-central-1.amazonaws.com/node-base:latest
 
 
 # Copy app files
@@ -14,4 +14,5 @@ RUN npm install
 EXPOSE 3000
 
 # Start the app
-CMD ["npm", "start"]
+# CMD ["npm", "start"]
+CMD ["node", "index.js"]
