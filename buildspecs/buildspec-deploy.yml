@@ -78,7 +78,10 @@ phases:
 
       # 3. Create or update ALB
       - |
-        if ! aws elbv2 describe-load-balancers --names nodejs-lb --region $AWS_REGION >/dev/null 2>&1; then
+        echo "Checking if ALB exists..."
+        LB_CHECK=$(aws elbv2 describe-load-balancers --names nodejs-lb --region $AWS_REGION 2>/dev/null || true)
+        
+        if [ -z "$LB_CHECK" ]; then
           echo "Creating ALB..."
           LB_ARN=$(aws elbv2 create-load-balancer \
             --name nodejs-lb \
