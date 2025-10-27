@@ -9,6 +9,10 @@ env:
     TASK_FAMILY: "nodejs-app-task"
     CONTAINER_NAME: "nodejs-app"
     CONTAINER_PORT: "3000"
+    PRIVATE_SUBNETS: "subnet-0686a7945f162e8a9,subnet-039b1d151d108804e"
+    PUBLIC_SUBNETS: "subnet-009e1d5349da6cd20,subnet-033ee837500a24a93"
+    SECURITY_GROUP: "sg-your-ecs-security-group-id"   # ECS tasks SG
+    LB_SECURITY_GROUP: "sg-your-lb-security-group-id" # ALB SG
 
 phases:
   install:
@@ -23,11 +27,12 @@ phases:
 
   build:
     commands:
-      - echo "Preparing ECS deployment..."
+      - echo "Preparing ECS deployment with ALB..."
       - IMAGE_URI="$ECR_REPO:latest"
-      
+      - echo "Using image: $IMAGE_URI"
+
+      # 1. Create ECS cluster if it doesn’t exist
       - |
-        # 1. Create ECS cluster if it doesn’t exist
         if ! aws ecs describe-clusters --clusters $CLUSTER_NAME --region $AWS_REGION | grep -q "ACTIVE"; then
           echo "Creating ECS cluster: $CLUSTER_NAME"
           aws ecs create-cluster --cluster-name $CLUSTER_NAME --region $AWS_REGION
@@ -35,8 +40,9 @@ phases:
           echo "ECS cluster already exists: $CLUSTER_NAME"
         fi
 
+      # 2. Register ECS task definition
       - |
-        echo "Registering new ECS task definition..."
+        echo "Registering ECS task definition..."
         cat <<EOF > taskdef.json
         {
           "family": "$TASK_FAMILY",
@@ -71,8 +77,46 @@ phases:
         EOF
         aws ecs register-task-definition --cli-input-json file://taskdef.json
 
+      # 3. Create or update ALB
       - |
-        # 3. Create or update ECS service
+        if ! aws elbv2 describe-load-balancers --names nodejs-lb --region $AWS_REGION >/dev/null 2>&1; then
+          echo "Creating ALB..."
+          LB_ARN=$(aws elbv2 create-load-balancer \
+            --name nodejs-lb \
+            --subnets $(echo $PUBLIC_SUBNETS | sed 's/,/ /g') \
+            --security-groups $LB_SECURITY_GROUP \
+            --scheme internet-facing \
+            --region $AWS_REGION \
+            --query 'LoadBalancers[0].LoadBalancerArn' \
+            --output text)
+          
+          echo "Creating Target Group..."
+          TG_ARN=$(aws elbv2 create-target-group \
+            --name nodejs-tg \
+            --port $CONTAINER_PORT \
+            --protocol HTTP \
+            --vpc-id vpc-0d9b94c746c48edd6 \
+            --target-type ip \
+            --health-check-path / \
+            --region $AWS_REGION \
+            --query 'TargetGroups[0].TargetGroupArn' \
+            --output text)
+          
+          echo "Creating Listener..."
+          aws elbv2 create-listener \
+            --load-balancer-arn $LB_ARN \
+            --protocol HTTP \
+            --port 80 \
+            --default-actions Type=forward,TargetGroupArn=$TG_ARN \
+            --region $AWS_REGION
+        else
+          echo "ALB already exists"
+          LB_ARN=$(aws elbv2 describe-load-balancers --names nodejs-lb --region $AWS_REGION --query 'LoadBalancers[0].LoadBalancerArn' --output text)
+          TG_ARN=$(aws elbv2 describe-target-groups --names nodejs-tg --region $AWS_REGION --query 'TargetGroups[0].TargetGroupArn' --output text)
+        fi
+
+      # 4. Create or update ECS service with ALB
+      - |
         if ! aws ecs describe-services --cluster $CLUSTER_NAME --services $SERVICE_NAME --region $AWS_REGION | grep -q "ACTIVE"; then
           echo "Creating ECS service: $SERVICE_NAME"
           aws ecs create-service \
@@ -81,16 +125,18 @@ phases:
             --task-definition $TASK_FAMILY \
             --desired-count 1 \
             --launch-type FARGATE \
-            --network-configuration "awsvpcConfiguration={subnets=[subnet-xxxxxxx,subnet-yyyyyyy],securityGroups=[sg-xxxxxxx],assignPublicIp=ENABLED}"
+            --network-configuration "awsvpcConfiguration={subnets=[$PRIVATE_SUBNETS],securityGroups=[$SECURITY_GROUP],assignPublicIp=DISABLED}" \
+            --load-balancers "targetGroupArn=$TG_ARN,containerName=$CONTAINER_NAME,containerPort=$CONTAINER_PORT"
         else
           echo "Updating ECS service with new task definition..."
           NEW_TASK_DEF=$(aws ecs describe-task-definition --task-definition $TASK_FAMILY | jq -r '.taskDefinition.taskDefinitionArn')
           aws ecs update-service \
             --cluster $CLUSTER_NAME \
             --service $SERVICE_NAME \
-            --task-definition $NEW_TASK_DEF
+            --task-definition $NEW_TASK_DEF \
+            --load-balancers "targetGroupArn=$TG_ARN,containerName=$CONTAINER_NAME,containerPort=$CONTAINER_PORT"
         fi
 
   post_build:
     commands:
-      - echo "ECS deployment complete."
+      - echo "ECS + ALB deployment complete."
