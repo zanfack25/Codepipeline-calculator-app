@@ -25,8 +25,7 @@ phases:
     commands:
       - echo "Preparing ECS deployment..."
       - IMAGE_URI="$ECR_REPO:latest"
-      - echo "Using image: $IMAGE_URI"
-
+      
       - |
         # 1. Create ECS cluster if it doesn’t exist
         if ! aws ecs describe-clusters --clusters $CLUSTER_NAME --region $AWS_REGION | grep -q "ACTIVE"; then
@@ -37,7 +36,6 @@ phases:
         fi
 
       - |
-        # 2. Register ECS task definition using LabRole
         echo "Registering new ECS task definition..."
         cat <<EOF > taskdef.json
         {
