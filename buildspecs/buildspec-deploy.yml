@@ -12,7 +12,7 @@ env:
     PRIVATE_SUBNETS: "subnet-0686a7945f162e8a9,subnet-039b1d151d108804e"
     PUBLIC_SUBNETS: "subnet-009e1d5349da6cd20,subnet-033ee837500a24a93"
     SECURITY_GROUP: "sg-your-ecs-security-group-id"   # ECS tasks SG
-    LB_SECURITY_GROUP: "sg-your-lb-security-group-id" # ALB SG
+    LB_SECURITY_GROUP: ALB_SG_ID # ALB SG
 
 phases:
   install:
@@ -76,7 +76,22 @@ phases:
         EOF
         aws ecs register-task-definition --cli-input-json file://taskdef.json
 
-      # 3. Create or update ALB
+      # 3.a Create security group for ALB
+      - |
+        ALB_SG_ID=$(aws ec2 create-security-group \
+          --group-name nodejs-lb-sg \
+          --description "Security group for NodeJS ALB" \
+          --vpc-id vpc-0d9b94c746c48edd6 \
+          --query 'GroupId' \
+          --output text)
+        
+        # Allow inbound HTTP (port 80)
+        aws ec2 authorize-security-group-ingress \
+          --group-id $ALB_SG_ID \
+          --protocol tcp \
+          --port 80 \
+          --cidr 0.0.0.0/0
+       # 3. Create or update ALB
       - |
         echo "Checking if ALB exists..."
         LB_CHECK=$(aws elbv2 describe-load-balancers --names nodejs-lb --region $AWS_REGION 2>/dev/null || true)
@@ -86,7 +101,7 @@ phases:
           LB_ARN=$(aws elbv2 create-load-balancer \
             --name nodejs-lb \
             --subnets $(echo $PUBLIC_SUBNETS | sed 's/,/ /g') \
-            --security-groups $LB_SECURITY_GROUP \
+            --security-groups $ALB_SG_ID \
             --scheme internet-facing \
             --region $AWS_REGION \
             --query 'LoadBalancers[0].LoadBalancerArn' \
