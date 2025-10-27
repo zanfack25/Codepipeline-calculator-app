@@ -11,7 +11,7 @@ env:
     CONTAINER_PORT: "3000"
     PRIVATE_SUBNETS: "subnet-0686a7945f162e8a9,subnet-039b1d151d108804e"
     PUBLIC_SUBNETS: "subnet-009e1d5349da6cd20,subnet-033ee837500a24a93"
-    SECURITY_GROUP: "sg-your-ecs-security-group-id"   # ECS tasks SG
+    SECURITY_GROUP: "sg-0e35cf69a301ef039"   # ECS tasks SG
     LB_SECURITY_GROUP: "sg-062d00d677013000a"# ALB SG
 
 phases:
