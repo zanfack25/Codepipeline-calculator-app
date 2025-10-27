@@ -19,7 +19,7 @@ phases:
   pre_build:
     commands:
       - echo "Logging in to Amazon ECR..."
-      - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin 111376855663.dkr.ecr.ca-central-1.amazonaws.com
+      - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO
 
   build:
     commands:
@@ -27,8 +27,8 @@ phases:
       - IMAGE_URI="$ECR_REPO:latest"
       - echo "Using image: $IMAGE_URI"
 
-      # 1. Create ECS cluster if it doesn’t exist
       - |
+        # 1. Create ECS cluster if it doesn’t exist
         if ! aws ecs describe-clusters --clusters $CLUSTER_NAME --region $AWS_REGION | grep -q "ACTIVE"; then
           echo "Creating ECS cluster: $CLUSTER_NAME"
           aws ecs create-cluster --cluster-name $CLUSTER_NAME --region $AWS_REGION
@@ -36,9 +36,9 @@ phases:
           echo "ECS cluster already exists: $CLUSTER_NAME"
         fi
 
-      # 2. Register ECS task definition using LabRole
       - |
-        echo "Registering new ECS task definition using LabRole..."
+        # 2. Register ECS task definition using LabRole
+        echo "Registering new ECS task definition..."
         cat <<EOF > taskdef.json
         {
           "family": "$TASK_FAMILY",
@@ -73,8 +73,8 @@ phases:
         EOF
         aws ecs register-task-definition --cli-input-json file://taskdef.json
 
-      # 3. Create or update ECS service
       - |
+        # 3. Create or update ECS service
         if ! aws ecs describe-services --cluster $CLUSTER_NAME --services $SERVICE_NAME --region $AWS_REGION | grep -q "ACTIVE"; then
           echo "Creating ECS service: $SERVICE_NAME"
           aws ecs create-service \
