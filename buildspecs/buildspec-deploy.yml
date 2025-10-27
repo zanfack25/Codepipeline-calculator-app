@@ -29,8 +29,7 @@ phases:
     commands:
       - echo "Preparing ECS deployment with ALB..."
       - IMAGE_URI="$ECR_REPO:latest"
-      - echo "Using image: $IMAGE_URI"
-
+     
       # 1. Create ECS cluster if it doesn’t exist
       - |
         if ! aws ecs describe-clusters --clusters $CLUSTER_NAME --region $AWS_REGION | grep -q "ACTIVE"; then
